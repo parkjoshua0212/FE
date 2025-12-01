@@ -1,6 +1,5 @@
 // src/screens/ChatScreen.tsx
-import PandaIcon from '../components/PandaIcon';
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -11,181 +10,98 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   ActivityIndicator,
-} from 'react-native';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { ChevronLeft, Send, Mic } from 'lucide-react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+  Alert,
+} from "react-native";
 
-const GEMINI_API_KEY = '여기에_실제_API_KEY_입력';
-
-const GEMINI_API_URL =
-  `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${GEMINI_API_KEY}`;
-
-// history + prompt를 받아서 텍스트 응답만 뽑아주는 함수
-async function callGemini(historyForGemini: any[], prompt: string): Promise<string> {
-  const contents = [
-    ...historyForGemini,
-    {
-      role: 'user',
-      parts: [{ text: prompt }],
-    },
-  ];
-
-  const res = await fetch(GEMINI_API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents,
-      generationConfig: {
-        maxOutputTokens: 500,
-      },
-    }),
-  });
-
-  const data = await res.json();
-
-  if (!res.ok) {
-    console.error('Gemini API error response:', data);
-    throw new Error('Gemini API Error');
-  }
-
-  const text =
-    data.candidates?.[0]?.content?.parts
-      ?.map((p: any) => p.text ?? '')
-      .join('') ?? '';
-
-  return text || 'Sorry, I could not generate a response.';
-}
+import { ChevronLeft, Send, Mic } from "lucide-react-native";
+import PandaIcon from "../components/PandaIcon";
+import { useNavigation } from "@react-navigation/native";
+import { useWebSocket } from "../providers/WebSocketProvider";
 
 type Message = {
   id: string;
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
-};
-
-type RootStackParamList = {
-  Home: undefined;
-  Chat: { mode?: string };
 };
 
 export default function ChatScreen() {
   const navigation = useNavigation<any>();
-  const route = useRoute<RouteProp<RootStackParamList, 'Chat'>>();
 
-  const initialMode = route.params?.mode || 'casual';
-  const [mode, setMode] = useState(initialMode);
+  const { connected, sendMessage, messages: wsMessages } = useWebSocket();
 
   const [messages, setMessages] = useState<Message[]>([
     {
-      id: '1',
-      role: 'assistant',
-      content: "Hello! How are you today? Let's practice English!",
+      id: "start",
+      role: "assistant",
+      content: "Hello! How can I help you practice English today?",
     },
   ]);
-  const [input, setInput] = useState('');
+
+  const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
-  // 메시지 변경 시: 스크롤 + AsyncStorage 저장
+  // Auto scroll when messages change
   useEffect(() => {
-    if (messages.length > 0) {
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-    }
-
-    const saveChatHistory = async () => {
-      try {
-        if (messages.length > 0) {
-          await AsyncStorage.setItem(
-            'last_chat_history',
-            JSON.stringify(messages),
-          );
-        }
-      } catch (e) {
-        console.error('Failed to save chat history', e);
-      }
-    };
-
-    saveChatHistory();
+    setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 100);
   }, [messages]);
 
-  // 🔹 모드 변경 버튼 → Alert로 선택
-  const handleModeChange = () => {
-    Alert.alert(
-      '회화 스타일 선택',
-      '사용할 영어 스타일을 선택하세요.',
-      [
-        {
-          text: '😊 Casual',
-          onPress: () => setMode('casual'),
-        },
-        {
-          text: '🎩 Formal',
-          onPress: () => setMode('formal'),
-        },
-        {
-          text: '취소',
-          style: 'cancel',
-        },
-      ],
-    );
-  };
+  // Listen for WS incoming messages
+  useEffect(() => {
+    if (!wsMessages || wsMessages.length === 0) return;
+    const latest = wsMessages[wsMessages.length - 1];
 
-  const handleFormSubmit = async () => {
-    if (!input.trim() || isLoading) return;
+    if (latest.type === "ai_response") {
+      const botMsg: Message = {
+        id: Date.now().toString(),
+        role: "assistant",
+        content: latest.text,
+      };
+      setMessages((prev) => [...prev, botMsg]);
+      setIsLoading(false);
+    }
+  }, [wsMessages]);
 
-    const userMessage: Message = {
+  const handleSend = () => {
+    if (!input.trim()) return;
+    if (!connected) {
+      Alert.alert("Not connected", "WebSocket is disconnected. Please try again.");
+      return;
+    }
+
+    const userMsg: Message = {
       id: Date.now().toString(),
-      role: 'user',
+      role: "user",
       content: input,
     };
 
-    const newMessages = [...messages, userMessage];
-    setMessages(newMessages);
-    setInput('');
+    setMessages((prev) => [...prev, userMsg]);
+    setInput("");
     setIsLoading(true);
 
-    try {
-      const historyForGemini = newMessages.slice(0, -1).map(msg => ({
-        role: msg.role === 'user' ? 'user' : 'model',
-        parts: [{ text: msg.content }],
-      }));
-
-      const prompt = `${input}
-
-(Please reply in a ${mode} tone suitable for English learning. Keep it concise.)`;
-
-      const responseText = await callGemini(historyForGemini, prompt);
-
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: responseText,
-      };
-
-      setMessages(prev => [...prev, assistantMessage]);
-    } catch (error) {
-      console.error('Gemini API Error:', error);
-      Alert.alert('Error', 'Failed to get response from AI.');
-    } finally {
-      setIsLoading(false);
-    }
+    // Send to backend via WebSocket
+    sendMessage({
+      type: "chat",
+      text: userMsg.content,
+    });
   };
 
   const renderItem = ({ item }: { item: Message }) => (
     <View
       style={[
         styles.messageRow,
-        item.role === 'user' ? styles.userRow : styles.assistantRow,
-      ]}>
+        item.role === "user" ? styles.userRow : styles.assistantRow,
+      ]}
+    >
       <View
         style={[
           styles.bubble,
-          item.role === 'user' ? styles.userBubble : styles.assistantBubble,
-        ]}>
+          item.role === "user" ? styles.userBubble : styles.assistantBubble,
+        ]}
+      >
         <Text style={styles.messageText}>{item.content}</Text>
       </View>
     </View>
@@ -193,28 +109,29 @@ export default function ChatScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* 헤더 */}
+      {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
-          style={styles.iconButton}>
-          <ChevronLeft color="#2c303c" size={24} />
+          style={styles.iconButton}
+        >
+          <ChevronLeft size={24} color="#2c303c" />
         </TouchableOpacity>
 
-        <Text style={styles.headerTitle}>
-          {mode === 'casual' ? '😊 Casual Mode' : '🎩 Formal Mode'}
-        </Text>
+        <Text style={styles.headerTitle}>English Conversation</Text>
 
-        <TouchableOpacity onPress={handleModeChange}>
-          <Text style={styles.modeButtonText}>모드 변경</Text>
-        </TouchableOpacity>
+        <View>
+          <Text style={{ fontSize: 12, color: connected ? "green" : "red" }}>
+            {connected ? "Online" : "Offline"}
+          </Text>
+        </View>
       </View>
 
-      {/* 메시지 리스트 */}
+      {/* CHAT LIST */}
       <FlatList
         ref={flatListRef}
         data={messages}
-        keyExtractor={item => item.id}
+        keyExtractor={(item) => item.id}
         renderItem={renderItem}
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={
@@ -227,43 +144,41 @@ export default function ChatScreen() {
         ListFooterComponent={
           isLoading ? (
             <View style={styles.loadingContainer}>
-              <View style={styles.assistantBubble}>
-                <ActivityIndicator color="#6b7280" size="small" />
-              </View>
+              <ActivityIndicator color="#6b7280" size="small" />
             </View>
           ) : null
         }
       />
 
-      {/* 입력창 */}
+      {/* INPUT BOX */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}>
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
         <View style={styles.inputContainer}>
           <View style={styles.inputWrapper}>
             <TextInput
               style={styles.input}
               value={input}
               onChangeText={setInput}
-              placeholder="Hello, how are you today?"
+              placeholder="Say something..."
               placeholderTextColor="#9ca3af"
-              multiline={false}
-              onSubmitEditing={handleFormSubmit}
               returnKeyType="send"
+              onSubmitEditing={handleSend}
             />
-            <TouchableOpacity style={styles.micButton}>
-              <Mic color="#9ca3af" size={20} />
+            <TouchableOpacity>
+              <Mic size={20} color="#9ca3af" />
             </TouchableOpacity>
           </View>
 
           <TouchableOpacity
-            onPress={handleFormSubmit}
-            disabled={!input.trim() || isLoading}
+            onPress={handleSend}
             style={[
               styles.sendButton,
               (!input.trim() || isLoading) && styles.disabledButton,
-            ]}>
-            <Send color="#fff" size={18} />
+            ]}
+            disabled={!input.trim() || isLoading}
+          >
+            <Send size={18} color="#fff" />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -271,125 +186,92 @@ export default function ChatScreen() {
   );
 }
 
+/* ======================= STYLES ======================= */
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#e8eaf0',
-  },
+  container: { flex: 1, backgroundColor: "#e8eaf0" },
+
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     padding: 16,
-    backgroundColor: '#d5d8e0',
+    alignItems: "center",
+    backgroundColor: "#d5d8e0",
     borderBottomWidth: 1,
-    borderBottomColor: '#c5c8d4',
+    borderBottomColor: "#c5c8d4",
   },
+
   headerTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#2c303c',
+    fontWeight: "600",
+    color: "#2c303c",
   },
-  iconButton: {
-    padding: 4,
-  },
-  modeButtonText: {
-    fontSize: 12,
-    color: '#2c303c',
-    textDecorationLine: 'underline',
-  },
-  listContent: {
-    padding: 16,
-    paddingBottom: 20,
-  },
-  mascotContainer: {
-    alignItems: 'center',
-    marginVertical: 16,
-  },
+
+  iconButton: { padding: 4 },
+
+  listContent: { padding: 16 },
+
+  mascotContainer: { alignItems: "center", marginVertical: 10 },
+
   mascotCircle: {
-    width: 128,
-    height: 128,
-    backgroundColor: 'white',
-    borderRadius: 64,
-    borderWidth: 4,
-    borderColor: '#2c303c',
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "white",
+    borderWidth: 3,
+    borderColor: "#2c303c",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  messageRow: {
-    marginBottom: 10,
-    flexDirection: 'row',
-  },
-  userRow: {
-    justifyContent: 'flex-end',
-  },
-  assistantRow: {
-    justifyContent: 'flex-start',
-  },
+
+  messageRow: { marginBottom: 10, flexDirection: "row" },
+  userRow: { justifyContent: "flex-end" },
+  assistantRow: { justifyContent: "flex-start" },
+
   bubble: {
-    maxWidth: '75%',
-    padding: 12,
-    borderRadius: 16,
+    maxWidth: "75%",
+    padding: 10,
+    borderRadius: 14,
   },
-  userBubble: {
-    backgroundColor: '#b8bcc9',
-    borderBottomRightRadius: 4,
-  },
-  assistantBubble: {
-    backgroundColor: '#d5d8e0',
-    borderBottomLeftRadius: 4,
-  },
-  messageText: {
-    color: '#2c303c',
-    fontSize: 14,
-    lineHeight: 20,
-  },
+
+  userBubble: { backgroundColor: "#b8bcc9", borderBottomRightRadius: 4 },
+  assistantBubble: { backgroundColor: "#d5d8e0", borderBottomLeftRadius: 4 },
+
+  messageText: { color: "#2c303c", fontSize: 14 },
+
   loadingContainer: {
-    alignItems: 'flex-start',
-    marginBottom: 10,
+    paddingVertical: 10,
+    paddingLeft: 10,
   },
+
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#d5d8e0',
-    borderTopWidth: 1,
-    borderTopColor: '#c5c8d4',
+    flexDirection: "row",
+    padding: 12,
+    backgroundColor: "#d5d8e0",
+    alignItems: "center",
   },
+
   inputWrapper: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
+    flexDirection: "row",
+    backgroundColor: "white",
     borderRadius: 24,
     paddingHorizontal: 16,
+    alignItems: "center",
     height: 44,
     marginRight: 8,
   },
-  input: {
-    flex: 1,
-    color: '#2c303c',
-    fontSize: 14,
-    padding: 0,
-  },
-  micButton: {
-    padding: 4,
-  },
+
+  input: { flex: 1, fontSize: 14, color: "#2c303c" },
+
   sendButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#2c303c',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#2c303c",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  disabledButton: {
-    opacity: 0.5,
-  },
+
+  disabledButton: { opacity: 0.5 },
 });

@@ -13,11 +13,42 @@ import {
 } from 'react-native';
 import PandaIcon from '../components/PandaIcon';
 
+import { useAuth0 } from 'react-native-auth0';
+import { useAuth } from '../providers/AuthProvider';
+
 type Props = {
   navigation: any;
 };
 
 export default function SignupScreen({ navigation }: Props) {
+  const { authorize } = useAuth0();
+  const { login } = useAuth();
+
+  const handleSignup = async () => {
+    try {
+      // 1️⃣ Open Auth0 signup page
+      const credentials = await authorize({
+        scope: 'openid profile email',
+        audience: 'https://api.lingomate.com',
+        additionalParameters: { screen_hint: "signup" }, // 👈 forces signup UI
+      });
+
+      if (!credentials?.accessToken) {
+        console.warn("No access token returned");
+        return;
+      }
+
+      // 2️⃣ Send token to AuthProvider → save → register-if-needed
+      await login(credentials.accessToken);
+
+      // 3️⃣ Navigate to Home after successful signup
+      navigation.replace('Home');
+
+    } catch (err: any) {
+      console.error("Signup error:", err);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
@@ -36,44 +67,30 @@ export default function SignupScreen({ navigation }: Props) {
               <Text style={styles.desc}>AI와 함께하는 외국어 회화</Text>
             </View>
 
-            {/* 입력 박스들 (아이디 / 이메일 / 비밀번호 / 비밀번호 확인) */}
+            {/* These input fields are OPTIONAL visual fields (not used by Auth0) */}
             <TextInput
               style={styles.inputBoxId}
-              placeholder="아이디"
+              placeholder="닉네임 (선택)"
               placeholderTextColor="#9ca3af"
             />
-            
 
             <TextInput
               style={styles.inputBoxEmail}
-              placeholder="이메일"
+              placeholder="이메일 (Auth0에서 입력)"
               placeholderTextColor="#9ca3af"
-              keyboardType="email-address"
-              autoCapitalize="none"
+              editable={false} // Auth0 handles it
             />
-            
 
             <TextInput
               style={styles.inputBoxPw}
-              placeholder="비밀번호"
+              placeholder="비밀번호 (Auth0에서 입력)"
               placeholderTextColor="#9ca3af"
               secureTextEntry
+              editable={false}
             />
-            
 
-            <TextInput
-              style={styles.inputBoxPwCheck}
-              placeholder="비밀번호 확인"
-              placeholderTextColor="#9ca3af"
-              secureTextEntry
-            />
-            
-
-            {/* 회원가입 버튼 박스 */}
-            <Pressable
-              style={styles.signupButton}
-              onPress={() => navigation.navigate('Home')}
-            >
+            {/* Signup button */}
+            <Pressable style={styles.signupButton} onPress={handleSignup}>
               <Text style={styles.signupButtonText}>회원가입</Text>
             </Pressable>
           </View>
@@ -86,7 +103,7 @@ export default function SignupScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#e5e7ed', // 배경 (login이랑 톤 맞춤)
+    backgroundColor: '#e5e7ed',
   },
   container: {
     flex: 1,
@@ -101,8 +118,6 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     padding: 24,
   },
-
-  // 로고 영역
   logoSection: {
     alignItems: 'center',
     marginBottom: 16,
@@ -123,75 +138,33 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     textAlign: 'center',
   },
-
-  // ====== 입력 박스들 공통 스타일 ======
-  // 위로 갈수록 marginTop 을 조금씩 조정하고 싶으면 여기 값만 바꾸면 됨.
-inputBoxId: {
-  height: 48,
-  borderRadius: 12,
-  backgroundColor: '#ffffff',
-  paddingHorizontal: 14,
-  fontSize: 14,
-  color: '#2c303c',
-  marginTop: 4,
-  marginBottom: 8,   // ★ 여기!
-},
-inputLabelId: {
-  fontSize: 12,
-  color: '#2c303c',
-  marginTop: 4,
-  marginBottom: 8,
-},
-
-inputBoxEmail: {
-  height: 48,
-  borderRadius: 12,
-  backgroundColor: '#ffffff',
-  paddingHorizontal: 14,
-  fontSize: 14,
-  color: '#2c303c',
-  marginBottom: 8,   // ★ 여기!
-},
-inputLabelEmail: {
-  fontSize: 12,
-  color: '#2c303c',
-  marginTop: 4,
-  marginBottom: 8,
-},
-
-inputBoxPw: {
-  height: 48,
-  borderRadius: 12,
-  backgroundColor: '#ffffff',
-  paddingHorizontal: 14,
-  fontSize: 14,
-  color: '#2c303c',
-  marginBottom: 8,   // ★ 여기!
-},
-inputLabelPw: {
-  fontSize: 12,
-  color: '#2c303c',
-  marginTop: 4,
-  marginBottom: 8,
-},
-
-inputBoxPwCheck: {
-  height: 48,
-  borderRadius: 12,
-  backgroundColor: '#ffffff',
-  paddingHorizontal: 14,
-  fontSize: 14,
-  color: '#2c303c',
-  marginBottom: 12,  // ★ 마지막은 버튼이랑 좀 더 띄움
-},
-inputLabelPwCheck: {
-  fontSize: 12,
-  color: '#2c303c',
-  marginTop: 4,
-  marginBottom: 16,
-},
-
-  // 회원가입 버튼
+  inputBoxId: {
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 14,
+    fontSize: 14,
+    color: '#2c303c',
+    marginBottom: 8,
+  },
+  inputBoxEmail: {
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#ffffff80',
+    paddingHorizontal: 14,
+    fontSize: 14,
+    color: '#9ca3af',
+    marginBottom: 8,
+  },
+  inputBoxPw: {
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#ffffff80',
+    paddingHorizontal: 14,
+    fontSize: 14,
+    color: '#9ca3af',
+    marginBottom: 12,
+  },
   signupButton: {
     marginTop: 8,
     height: 48,
