@@ -7,10 +7,10 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { authorize, revoke } from 'react-native-app-auth';
 import { jwtDecode } from 'jwt-decode';
 
-// Import your existing Auth0 config
+// Auth0 config
 import { authConfig } from './src/auth/authConfig';
 
-// Screens...
+// Screens
 import HomeScreen from './src/screens/HomeScreen';
 import LoginScreen from './src/screens/login';
 import ProfileScreen from './src/screens/Profile';
@@ -33,13 +33,15 @@ import ChatScreen from './src/screens/ChatScreen';
 import ChatScript from './src/screens/ChatScript';
 import ChatHistoryScreen from './src/screens/ChatHistoryScreen';
 
+
 // ======================================================
-// 🔐 Auth Context (now includes userId)
+// 🔐 Auth Context
 // ======================================================
 export const AuthContext = createContext({
   accessToken: null as string | null,
-  userId: null as string | null,   // ← MUST EXIST
+  userId: null as string | null,
   login: async () => {},
+  signup: async () => {},
   logout: async () => {},
 });
 
@@ -63,39 +65,59 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     },
   };
 
+  // -------------------------------------------------------
+  // LOGIN (Existing User)
+  // -------------------------------------------------------
   const login = async () => {
     try {
       const result = await authorize(config);
+
       setAccessToken(result.accessToken);
 
       if (result.idToken) {
         const decoded: any = jwtDecode(result.idToken);
-        setUserId(decoded.sub);   // ← THIS IS YOUR AUTH0 USER ID
+        setUserId(decoded.sub); // Auth0 user_id
       }
-    } catch (err) {
-      console.error("Auth0 Login Error:", err);
+    } catch (error) {
+      console.error("Auth0 Login Error:", error);
     }
   };
 
+  // -------------------------------------------------------
+  // SIGNUP (New User)
+  // -------------------------------------------------------
+  const signup = async () => {
+    try {
+      const result = await authorize({
+        ...config,
+        additionalParameters: { screen_hint: "signup" }, // ⭐ OPEN SIGNUP TAB
+      });
+
+      setAccessToken(result.accessToken);
+
+      if (result.idToken) {
+        const decoded: any = jwtDecode(result.idToken);
+        setUserId(decoded.sub);
+      }
+    } catch (error) {
+      console.error("Auth0 Signup Error:", error);
+    }
+  };
+
+  // -------------------------------------------------------
+  // LOGOUT
+  // -------------------------------------------------------
   const logout = async () => {
     try {
       setAccessToken(null);
       setUserId(null);
-    } catch (err) {
-      console.error("Logout Error:", err);
+    } catch (error) {
+      console.error("Logout Error:", error);
     }
   };
 
-  // ⭐ THIS is the part you replace
   return (
-    <AuthContext.Provider 
-      value={{ 
-        accessToken, 
-        userId, 
-        login, 
-        logout 
-      }}
-    >
+    <AuthContext.Provider value={{ accessToken, userId, login, signup, logout }}>
       {children}
     </AuthContext.Provider>
   );
@@ -103,7 +125,7 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
 
 
 // ======================================================
-// Navigation
+// 📱 Navigation Setup
 // ======================================================
 const Stack = createNativeStackNavigator();
 
@@ -113,10 +135,11 @@ function App(): React.JSX.Element {
       <AuthProvider>
         <NavigationContainer>
           <Stack.Navigator initialRouteName="Splash">
-
+            
             <Stack.Screen name="Splash" component={SplashScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Signup" component={SignupScreen} options={{ headerShown: false }} />
+
             <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Review" component={ReviewScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: false }} />

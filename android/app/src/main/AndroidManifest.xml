@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.lingomateapp">
 
     <uses-permission android:name="android.permission.INTERNET" />
 
@@ -9,7 +10,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:allowBackup="false"
         android:theme="@style/AppTheme"
-        android:usesCleartextTraffic="${usesCleartextTraffic}"
+        android:usesCleartextTraffic="true"
         android:supportsRtl="true">
 
         <activity
@@ -20,25 +21,27 @@
             android:windowSoftInputMode="adjustResize"
             android:exported="true">
 
-            <!-- Auth0 Login Callback -->
+            <!-- 🚀 App Launcher -->
             <intent-filter>
-                <action android:name="android.intent.action.VIEW"/>
-                <category android:name="android.intent.category.DEFAULT"/>
-                <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="com.lingomateapp"
-                      android:host="callback" />
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Auth0 Logout Callback -->
+            <!-- 🔐 Auth0 Login / Signup / Logout Redirect Handler -->
             <intent-filter>
-                <action android:name="android.intent.action.VIEW"/>
-                <category android:name="android.intent.category.DEFAULT"/>
-                <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="com.lingomateapp"
-                      android:host="logout" />
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <!-- ⚠️ MUST MATCH redirectUri EXACTLY -->
+                <data
+                    android:scheme="com.lingomateapp"
+                    android:host="dev-rc5gsyjk5pfptk72.us.auth0.com"
+                    android:path="/android/com.lingomateapp/callback" />
             </intent-filter>
 
         </activity>
+
     </application>
 
 </manifest>
